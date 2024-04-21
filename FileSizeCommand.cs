@@ -24,53 +24,67 @@ internal sealed class FileHistogramCommand : Command<FileHistogramCommand.Settin
 
         AnsiConsole.MarkupLine($"Total file size for [green]{searchPath}[/]: [blue]{totalFileSize:N0}[/] bytes");
 
-
-
-        STLDocument stlString;
-
-        using (var stream = File.OpenRead(settings.SearchPath))
+        // Synchronous
+        AnsiConsole.Progress().Start(ctx =>
         {
-            stlString = STLDocument.Read(stream);
-        }
 
+            // Define tasks
+            var loadingTask = ctx.AddTask("[green]Loading File[/]");
+            var boundsTask = ctx.AddTask("[green]Calculating Bounds[/]");
+            var histogramTask = ctx.AddTask("[green]Generating Histogram[/]");
 
-        var minZ = double.MaxValue;
-        var maxZ = double.MinValue;
-        stlString.ForEach(f =>
-        {
-            f.Vertices.ForEach(v =>
+            STLDocument stlString;
+
+            using (var stream = File.OpenRead(settings.SearchPath))
             {
-                minZ = Math.Min(minZ, v.Z);
-                maxZ = Math.Max(maxZ, v.Z);
-            });
-        });
+                stlString = STLDocument.Read(stream);
+            }
 
-        AnsiConsole.MarkupLine($"Min Z height is [green]{minZ}[/] and max is [blue]{maxZ}[/]");
+            loadingTask.Value = 100;
 
+            var minZ = double.MaxValue;
+            var maxZ = double.MinValue;
 
-
-
-        var buckets = new int[21];
-        var step = (maxZ - minZ) / 20.0;
-        stlString.ForEach(f =>
-        {
-            f.Vertices.ForEach(v =>
+            stlString.ForEach(f =>
             {
-                buckets[(int)Math.Floor((v.Z - minZ) / step)] += 1;
+                boundsTask.Increment(100.0/stlString.Facets.Count);
+                f.Vertices.ForEach(v =>
+                {
+                    
+                    minZ = Math.Min(minZ, v.Z);
+                    maxZ = Math.Max(maxZ, v.Z);
+                });
             });
+            boundsTask.Value=100;
+
+            AnsiConsole.MarkupLine($"Min Z height is [green]{minZ}[/] and max is [blue]{maxZ}[/]");
+
+
+
+            var buckets = new int[21];
+            var step = (maxZ - minZ) / 20.0;
+            stlString.ForEach(f =>
+            {
+                histogramTask.Increment(100.0/stlString.Facets.Count);
+                f.Vertices.ForEach(v =>
+                {
+                    buckets[(int)Math.Floor((v.Z - minZ) / step)] += 1;
+                });
+            });
+
+            histogramTask.Value = 100;
+
+            Dictionary<double, int> histogram = ToHistogram(buckets, step, minZ);
+
+            BarChart barChart = new BarChart()
+                .Width(60)
+                .Label("[green bold underline]Histogram[/]")
+                .CenterLabel().AddItems(histogram.Reverse(), (item) => new BarChartItem(
+                    item.Key.ToString("0.00"), Math.Log10(item.Value), Color.Red.Blend(Color.Blue, (float)((item.Key - minZ) / (maxZ - minZ)))));
+
+            AnsiConsole.Write(barChart);
+
         });
-
-        Dictionary<double, int> histogram = ToHistogram(buckets, step, minZ);
-
-        BarChart barChart = new BarChart()
-            .Width(60)
-            .Label("[green bold underline]Histogram[/]")
-            .CenterLabel().AddItems(histogram.Reverse(), (item) => new BarChartItem(
-                item.Key.ToString("0.00"), Math.Log10(item.Value), Color.Red.Blend(Color.Blue, (float)((item.Key - minZ) / (maxZ - minZ)))));
-
-        AnsiConsole.Write(barChart);
-
-
         return 0;
     }
 
@@ -81,7 +95,7 @@ internal sealed class FileHistogramCommand : Command<FileHistogramCommand.Settin
 
         buckets.ForEach(b =>
         {
-            histogram[(i * step)+minZ] = buckets[i];
+            histogram[(i * step) + minZ] = buckets[i];
             i++;
         });
         return histogram;
