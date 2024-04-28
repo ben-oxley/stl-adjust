@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using Microsoft.VisualBasic;
 using Spectre.Console;
 using Spectre.Console.Cli;
 using STLDotNet6.Formats.StereoLithography;
@@ -35,6 +36,8 @@ internal sealed class FileHistogramCommand : Command<FileHistogramCommand.Settin
 
             STLDocument stlString;
 
+            loadingTask.IsIndeterminate = true;
+
             using (var stream = File.OpenRead(settings.SearchPath))
             {
                 stlString = STLDocument.Read(stream);
@@ -45,12 +48,17 @@ internal sealed class FileHistogramCommand : Command<FileHistogramCommand.Settin
             var minZ = double.MaxValue;
             var maxZ = double.MinValue;
 
+            var facet = 0;
+            
+            var increment = 100.0/ stlString.Facets.Count;
+
             stlString.ForEach(f =>
             {
-                boundsTask.Increment(100.0/stlString.Facets.Count);
+                facet = updateTaskProgress(boundsTask, facet, increment);
+
                 f.Vertices.ForEach(v =>
                 {
-                    
+
                     minZ = Math.Min(minZ, v.Z);
                     maxZ = Math.Max(maxZ, v.Z);
                 });
@@ -59,13 +67,16 @@ internal sealed class FileHistogramCommand : Command<FileHistogramCommand.Settin
 
             AnsiConsole.MarkupLine($"Min Z height is [green]{minZ}[/] and max is [blue]{maxZ}[/]");
 
-
+            facet = 0;
 
             var buckets = new int[21];
             var step = (maxZ - minZ) / 20.0;
+
             stlString.ForEach(f =>
             {
-                histogramTask.Increment(100.0/stlString.Facets.Count);
+
+                facet = updateTaskProgress(histogramTask, facet, increment);
+
                 f.Vertices.ForEach(v =>
                 {
                     buckets[(int)Math.Floor((v.Z - minZ) / step)] += 1;
@@ -87,6 +98,13 @@ internal sealed class FileHistogramCommand : Command<FileHistogramCommand.Settin
         });
         return 0;
     }
+
+    private static int updateTaskProgress(ProgressTask task, int facet, double increment)
+    {
+        if ((int)(increment * facet++) != task.Value) task.Value = (int)(increment * facet++);
+        return facet;
+    }
+
 
     private static Dictionary<double, int> ToHistogram(int[] buckets, double step, double minZ)
     {
