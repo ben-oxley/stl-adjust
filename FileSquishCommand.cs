@@ -39,7 +39,7 @@ internal sealed class FileSquishCommand : Command<FileSquishCommand.Settings>
         var height = AnsiConsole.Ask<float>("What height do you want to squish it to?");
         stlString.Facets.ForEach(f=>f.Vertices.ForEach(v=>{
             if (v.Z < heightMax){
-                v.Z = heightMax-(1.0f-((v.Z-minZ)/(maxZ-minZ)*height));
+                v.Z = heightMax-(1.0f-((v.Z-minZ)/(heightMax-minZ)))*height;  
             }
         }));
         using (var writeStream = File.OpenWrite(settings.Path+".modified.stl")){
